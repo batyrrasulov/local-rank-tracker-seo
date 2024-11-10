@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home - Local Rank Tracker</title>
+    <link rel="stylesheet" href="home.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC8-kGGU-l1nN7U60f1NPIoIWpK0fuHdOo&libraries=places&callback=initMap"></script>
+</head>
+<body>
+    <div id="map"></div>
+
+<div id="header">
+    <div class="nav-links">
+        <a href="#logo">Logo</a>
+    </div>
+    <h1 class="text-white">Local Rank Tracker</h1>
+    <div class="btn-container" style="position: absolute; right: 20px; top: 10px;">
+        <button id="logout-btn" class="btn btn-danger">Logout</button>
+    <button id="delete-account-btn" class="btn btn-warning">Delete Account</button>
+</div>
+</div>
+
+<div id="loading-banner">Loading, please wait...</div>
+
+<div id="panel">
+    <h2 class="panel-title">Map Scan</h2>
+    <div class="mb-3 position-relative">
+        <label for="business-name" class="form-label">Business Name</label>
+        <input type="text" id="business-name" class="form-control" placeholder="Enter business name">
+        <div id="suggestions" class="list-group"></div>
+    </div>
+    <div class="mb-3">
+        <label for="keywords" class="form-label">Keyword</label>
+        <input type="text" id="keywords" class="form-control" placeholder="Enter keyword">
+        <div id="keyword-suggestions" class="list-group"></div>
+    </div>    
+    <div class="mb-3">
+        <label for="radius" class="form-label">Radius</label>
+        <div class="input-group">
+            <input type="number" id="radius" class="form-control" placeholder="">
+            <select id="radius-unit" class="form-select">
+                <option value="miles">Miles</option>
+                <option value="meters">Meters</option>
+                <option value="km">Kilometers</option>
+                <option value="feet">Feet</option>
+            </select>
+        </div>
+    </div>
+    <div class="mb-3">
+        <label for="grid-size" class="form-label">Grid Size</label>
+        <select id="grid-size" class="form-select">
+            <option value="3x3">3 x 3</option>
+            <option value="5x5">5 x 5</option>
+            <option value="7x7">7 x 7</option>
+        </select>
+    </div>
+    <div class="btn-container">
+        <button id="run-search" class="btn btn-primary w-50">Run Search</button>
+        <button id="reset-search" class="btn btn-secondary w-50">Reset Search</button>
+    </div>
+</div>
+
+<footer>
+    <p>&copy; 2024 Local Rank Tracker. All rights reserved.</p>
+    <div class="footer-links">
+        <a href="#about">About Us</a>
+        <a href="#contact">Contact Us</a>
+    </div>
+    <div class="social-media">
+        <a href="#facebook">Facebook</a>
+        <a href="#twitter">Twitter</a>
+        <a href="#linkedin">LinkedIn</a>
+    </div>
+</footer>
+<!-- Modal for Business Details -->
+<div class="modal fade" id="businessDetailsModal" tabindex="-1" aria-labelledby="businessDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="businessDetailsModalLabel">Business Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <h6>Ranked Businesses</h6>
+                <ul id="business-list" class="list-group"></ul> <!-- List for business details -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script>
+     let map;
+    let gridMarkers = []; // Array to hold grid markers
+    let selectedPoint = null; // To track the selected grid point
+    let placeMarker = null; // Variable to hold the place marker
+
+    function initMap() {
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: 37.7749, lng: -122.4194 }, // Default: San Francisco
+                zoom: 12
+            });
+            generateInitialGrid(3); // Initialize grid with default size
+        }
+
+        // Function to generate the grid with initial transparent colors
+function generateInitialGrid(size) {
+    clearMarkers(); // Clear existing markers
+
+    const center = map.getCenter(); // Get the center of the map
+    const offset = 0.01; // Adjust this value for grid size
+
+    for (let i = -Math.floor(size / 2); i <= Math.floor(size / 2); i++) {
+        for (let j = -Math.floor(size / 2); j <= Math.floor(size / 2); j++) {
+            let latOffset = center.lat() + i * offset;
+            let lngOffset = center.lng() + j * offset;
+
+            const isCenter = i === 0 && j === 0;
+
+            const marker = new google.maps.Marker({
+                position: { lat: latOffset, lng: lngOffset },
+                map: map,
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 10,
+                    fillColor: 'transparent', // Transparent fill
+                    fillOpacity: 0, // Fully transparent
+                    strokeWeight: 2,
+                    strokeColor: '#000' // Border for visibility
+                }
+            });
+
+            // For center point, add a custom cross icon overlay
+            if (isCenter) {
+                const crossMarker = new google.maps.Marker({
+                    position: { lat: latOffset, lng: lngOffset },
+                    map: map,
+                    icon: {
+                        path: 'M -1,0 1,0 M 0,-1 0,1', // Cross icon
+                        strokeColor: 'red',
+                        strokeWeight: 2,
+                        scale: 10, // Adjust the size of the cross
+                    }
+                });
+                gridMarkers.push(crossMarker); // Push the cross marker as well
+            }
+
+            gridMarkers.push(marker);
+        }
+    }
+}
+function fetchLocation(placeId) {
+    $.get(`/place-details?place_id=${placeId}`, function(locationData) {
+        console.log('Location Data:', locationData); // Log the location data
+        const { location: { lat, lng } } = locationData.result; // Assuming your API returns latitude and longitude
+        const latLng = new google.maps.LatLng(lat, lng);
+
+        clearMarkers();
+        
+        // Assuming 'map' is your Google Map instance
+        map.setCenter(latLng); // Center the map on the selected location
+        map.setZoom(15); // Zoom in to the location
+        placeMarker = new google.maps.Marker({
+            position: latLng,
+            map: map,
+            title: locationData.result.name // Optional: Display name as a title
+        });
+
+        // Clear existing place marker if it exists
+        generateInitialGrid(3);
+    }).fail(function() {
+        console.error('Error fetching place details.');
+    });
+}
+
+
+// Function to clear markers
+function clearMarkers() {
+    if (gridMarkers.length > 0) {
+        gridMarkers.forEach(marker => marker.setMap(null)); // Remove markers from the map
+        gridMarkers = []; // Reset the markers array
+    }
+}
+
+function resetGrid() {
+            clearMarkers(); // Clear grid markers
+            if (placeMarker) { // Clear the place marker if it exists
+                placeMarker.setMap(null);
+                placeMarker = null; // Reset the place marker variable
+            }
+            console.log('Grid reset'); // Log for debugging
+        }
+
+        // Function to generate the grid and apply colors based on rankings
+        function generateGridWithRankings(size, rankings = []) {
+    clearMarkers();
+    const center = map.getCenter();
+    const offset = 0.01; // Adjust grid spacing
+    console.log('Rankings:', rankings);
+
+    // Loop through the grid to create markers and color them based on real rankings
+    for (let i = -Math.floor(size / 2); i <= Math.floor(size / 2); i++) {
+        for (let j = -Math.floor(size / 2); j <= Math.floor(size / 2); j++) {
+            let latOffset = center.lat() + i * offset;
+            let lngOffset = center.lng() + j * offset;
+
+            const rankIndex = (i + Math.floor(size / 2)) * size + (j + Math.floor(size / 2));
+            const rankData = rankings[rankIndex] || {}; // Get the rank data
+            const rank = rankData.rank || 0; // Adjust to access rank
+            const placeId = rankData.place_id || null; // Make sure to get the place_id for fetching details
+
+            console.log(`Rank for position (${i}, ${j}): ${rank}`); 
+            console.log(`Rank Data for index ${rankIndex}:`, rankData); // Log rank data
+            console.log(`Place ID for marker at (${latOffset}, ${lngOffset}): ${placeId}`); // Log Place ID
+
+            const color = getRankColor(rank); // Get rank-based color
+            console.log(`Marker at (${latOffset}, ${lngOffset}) has rank ${rank} and color ${color}`);
+            const marker = new google.maps.Marker({
+                position: { lat: latOffset, lng: lngOffset },
+                map: map,
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 10,
+                    fillColor: color, // Use rank-based color
+                    fillOpacity: 1,
+                    strokeWeight: 2,
+                    strokeColor: '#000'
+                },
+                label: {
+        text: rank.toString(), // Display rank as a string
+        color: 'black',
+        fontSize: '12px',
+        fontWeight: 'bold'
+    }
+            });
+
+            if (placeId) {
+    google.maps.event.addListener(marker, 'click', function() {
+        console.log(`Fetching details for Place ID: ${placeId}`);
+        const radius = $('#radius').val();
+        fetchBusinessDetails(placeId, radius);
+    });
+} else {
+    console.warn(`No Place ID for rank at index ${rankIndex}`);
+}
+            gridMarkers.push(marker);
+        }
+    }
+}
+
+function fetchBusinessDetails(placeId, radius) {
+    if (!placeId || !radius) {
+        console.error('Business ID or radius is missing');
+        return; // Early return if parameters are missing
+    }
+    console.log(`Fetching business details for Place ID: ${placeId} with radius: ${radius}`);
+
+    $.ajax({
+        url: '/businessDetails',
+        method: 'GET',
+        data: { businessId: placeId, radius: parseFloat(radius)},
+        success: function(data) {
+            console.log('Business Details Data:', data); // Log business details
+            // Clear the previous business list in the modal
+            $('#business-list').empty();
+
+            // Check if we received valid data
+            if (data && data.businessInfo) {
+                const { businessInfo, nearbyBusinesses } = data;
+
+                // Display nearby businesses, ensuring place_id exists
+                if (Array.isArray(nearbyBusinesses) && nearbyBusinesses.length > 0) {
+                    nearbyBusinesses.forEach(business => {
+                        if (business.place_id) { // Check if place_id exists
+                            const isSelected = business.place_id === placeId;
+                            $('#business-list').append(
+                                `<li class="list-group-item ${isSelected ? 'bg-light' : ''}">
+                                    ${business.name || 'No name available'}
+                                    <br>
+                                    ${business.address || 'No address available'}
+                                    <br>
+                                    Rating: ${business.rating || 'No rating available'}
+                                </li>`
+                            );
+                        } else {
+                            console.warn('No Place ID for business:', business);
+                        }
+                    });
+                } else {
+                    $('#business-list').append('<li class="list-group-item">No nearby businesses found.</li>');
+                }
+            } else {
+                $('#business-list').append('<li class="list-group-item">No details available for this business.</li>');
+            }
+
+            // Show the modal
+            $('#businessDetailsModal').modal('show');
+        },
+        error: function(xhr) {
+    console.error('Error fetching business details:', xhr.responseText);
+    let errorMessage = 'Error fetching business details.';
+    try {
+        const errorResponse = JSON.parse(xhr.responseText);
+        errorMessage = errorResponse.error || errorMessage;
+    } catch (e) {
+        console.error('Could not parse error response:', e);
+    }
+    $('#business-list').empty().append(`<li class="list-group-item">${errorMessage}</li>`);
+    $('#businessDetailsModal').modal('show');
+}
+    });
+}
+
+// Function to determine color based on rank
+function getRankColor(rank) {
+    if (rank >= 4) return 'green';      // Example for high rating
+    if (rank >= 3) return 'yellow';     // Example for medium rating
+    if (rank > 0) return 'red';         // Example for low rating
+    return 'lightgray';                  // No rating
+}
+
+function showBusinessList(rankings, selectedPlaceId) {
+    const $businessList = $('#business-list');
+    $businessList.empty(); // Clear previous list
+
+    rankings.forEach((business) => {
+        const isSelected = business.place_id === selectedPlaceId; // Check if it's the selected business
+
+        $businessList.append(`
+            <li class="list-group-item ${isSelected ? 'bg-light' : ''}">
+                ${business.name || 'No name available'}
+                <br>
+                ${business.vicinity || 'No address available'}
+                <br>
+                Rating: ${business.rating || 'No rating available'}
+            </li>
+        `);
+    });
+
+    // Show the modal
+    $('#businessDetailsModal').modal('show');
+}
+
+        // Debounce function to limit API calls
+function debounce(func, delay) {
+    let timeout;
+    return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), delay);
+    };
+}
+let debounceTimeout;
+
+
+    $(document).ready(function() {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = 'index.html';
+        }
+
+        $('#logout-btn').on('click', function() {
+            localStorage.removeItem('token');
+            window.location.href = 'index.html';
+        });
+
+        $('#delete-account-btn').on('click', function() {
+    if (confirm("Are you sure you want to delete your account? This action cannot be undone.")) {
+        const token = localStorage.getItem('token'); // Ensure the token is retrieved correctly
+        console.log("Token:", token); // Debugging output to see the token value
+        $.ajax({
+            url: '/delete-account', 
+            type: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            success: function() {
+                alert('Your account has been successfully deleted.');
+                localStorage.removeItem('token');
+                window.location.href = 'index.html'; // Redirect to home page
+            },
+            error: function(xhr, status, error) {
+                console.error('Error deleting account:', error);
+                alert('There was an error deleting your account. Please try again.');
+            }
+        });
+    }
+});
+// Handle Enter key press in the business name input field
+$('#business-name').on('keydown', function(event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        const query = $(this).val().trim();
+        
+        if (query) {
+            console.log(`Requesting suggestions for: ${query}`); // Log the query
+
+            // Make a single API call with the final input
+            $.get(`/suggestions?query=${query}`)
+                .done(function(response) {
+                    console.log('API Response:', response); // Log the entire response
+                    $('#suggestions').empty(); // Clear previous suggestions
+
+                    // Check if predictions exist and are an array
+                    if (response.status === 'OK' && Array.isArray(response.predictions) && response.predictions.length > 0) {
+                        response.predictions.forEach(item => {
+                            $('#suggestions').append(`
+                                <a href="#" class="list-group-item list-group-item-action suggestion" data-place-id="${item.place_id}">
+                                    ${item.description}
+                                </a>
+                            `);
+                        });
+                    } else {
+                        $('#suggestions').append('<div>No suggestions found</div>');
+                    }
+                })
+                .fail(function(xhr, status, error) {
+                    console.error('Error fetching suggestions:', error);
+                });
+        } else {
+            $('#suggestions').empty(); // Clear suggestions if input is empty
+        }
+    }
+});
+
+// Click handler for selecting a suggestion
+$(document).on('click', '.suggestion', function(e) {
+    e.preventDefault();
+    console.log('Suggestion clicked'); // Log for debugging
+    
+    const placeId = $(this).data('place-id');
+    
+    if (placeId) {
+        console.log('Fetching details for:', placeId); // Log the placeId
+        $.get(`/place-details?place_id=${placeId}`)
+            .done(function(response) {
+                console.log('Place details response:', response);
+                if (response.status === 'OK') {
+                    const place = response.result;
+                    const location = place.geometry.location;
+
+                    // Center the map
+                    map.setCenter({ lat: location.lat, lng: location.lng });
+                    map.setZoom(15);
+                    generateInitialGrid(3); // Regenerate grid
+
+                    $('#business-name').val(place.name);
+                    $('#suggestions').empty();
+                }
+            })
+            .fail(function(xhr, status, error) {
+                console.error('Error fetching place details:', error);
+                console.error('Response text:', xhr.responseText);
+            });
+    }
+});
+
+$('#run-search').on('click', function() {
+    const businessName = $('#business-name').val();
+    const keywords = $('#keywords').val();
+    const gridSize = $('#grid-size').val();
+    const radius = $('#radius').val();
+    const radiusUnit = $('#radius-unit').val();
+    const sizeValue = parseInt(gridSize.split('x')[0]);
+
+    // Input validation
+    if (!businessName || !keywords || !radius) {
+        alert('Please fill out all fields before running the search.');
+        return; // Exit the function if validation fails
+    }
+
+    // Log the search criteria for debugging
+    console.log(`Running search for Business Name: ${businessName}, Keywords: ${keywords}, Radius: ${radius} ${radiusUnit}`);
+
+    $('#loading-banner').show();
+    $(this).prop('disabled', true); // Disable the button to prevent multiple clicks
+    
+    const location = map.getCenter(); // Add this line to define 'location'
+    const locationString = `${location.lat()},${location.lng()}`; // Format as "lat,lng"
+    const encodedKeywords = encodeURIComponent(keywords);
+
+    // Make an API request to the backend to fetch rankings
+    $.ajax({
+        url: '/rankings', // Ensure your backend is set up to handle this route
+        method: 'GET',
+        data: {
+            location: locationString,
+            keyword: encodedKeywords,
+            radius: radius,
+            radius_unit: radiusUnit
+        },
+        success: function(response) {
+            console.log('Backend Response:', response);
+            console.log('Rankings:', response.map(place => place.rating));
+
+            $('#loading-banner').hide();
+            $('#run-search').prop('disabled', false); // Re-enable the button
+
+            if (Array.isArray(response) && response.length > 0) {
+                generateGridWithRankings(sizeValue, response);
+            } else {
+                console.error('No rankings found:', response);
+                alert('No rankings found. Please try again.');
+            }
+        },
+        error: function(xhr, status, error) {
+            $('#loading-banner').hide();
+            console.error('Error making API request:', error);
+            console.error('Response Text:', xhr.responseText);
+            alert('There was an error with your search. Please try again.');
+        }
+    });
+});
+
+$('#reset-search').on('click', function() {
+            resetGrid(); // Call your function to reset the grid
+            $('#business-name').val(''); // Clear the business name input field
+            $('#keywords').val('');
+            $('#radius').val(''); // Clear the radius input field
+            $('#suggestions').empty(); // Clear any suggestions
+
+            generateGridWithRankings(3); // Reset to default grid size
+            console.log('Resetting search...');
+        });
+    });
+</script>
+
+
+</body>
+</html>
