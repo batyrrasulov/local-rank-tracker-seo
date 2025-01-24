@@ -1,4 +1,4 @@
-# Local Rank Tracker
+# Local Rank Tracker - SEO
 
 **Local Rank Tracker** is a local rank tracking platform designed to help businesses optimize their visibility on Google Maps and local search results. It enables users to analyze how their business ranks for specific keywords across a geographic grid, providing clear visualizations of rankings at different locations. 
 
